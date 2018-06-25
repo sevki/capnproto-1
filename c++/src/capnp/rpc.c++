@@ -910,15 +910,17 @@ private:
         // ultimately resolves to a local capability. Instead, we'll need to queue the call until
         // the promise resolves.
 
-        auto vpapPromises = fork.addBranch().then(kj::mvCapture(context,
-            [interfaceId,methodId](kj::Own<CallContextHook>&& context,
-                                   kj::Own<ClientHook> resolvedCap) {
+        kj::Tuple<kj::Promise<void>, kj::Promise<kj::Own<PipelineHook>>> vpapPromises =
+            fork.addBranch().then(kj::mvCapture(context,
+                [interfaceId,methodId](kj::Own<CallContextHook>&& context,
+                                       kj::Own<ClientHook> resolvedCap) {
           auto vpap = resolvedCap->call(interfaceId, methodId, kj::mv(context));
           return kj::tuple(kj::mv(vpap.promise), kj::mv(vpap.pipeline));
         })).split();
 
-        return {
-          kj::mv(kj::get<0>(vpapPromises)),
+        kj::Promise<void> promise1 = kj::mv(kj::get<0>(vpapPromises));
+        return VoidPromiseAndPipeline {
+          kj::mv(promise1),
           newLocalPromisePipeline(kj::mv(kj::get<1>(vpapPromises))),
         };
       }
@@ -2389,15 +2391,17 @@ private:
           // The plot thickens: We're looking at a promise capability. It could end up resolving
           // to a capability outside the gateway, in which case we don't want to translate at all.
 
-          auto promises = resolvedPromise->then(kj::mvCapture(context,
-              [this,interfaceId,methodId](kj::Own<CallContextHook>&& context,
-                                          kj::Own<ClientHook> resolvedCap) {
+          kj::Tuple<kj::Promise<void>, kj::Promise<kj::Own<PipelineHook>>> promises =
+              resolvedPromise->then(kj::mvCapture(context,
+                  [this,interfaceId,methodId](kj::Own<CallContextHook>&& context,
+                                              kj::Own<ClientHook> resolvedCap) {
             auto vpap = startCall(interfaceId, methodId, kj::mv(resolvedCap), kj::mv(context));
             return kj::tuple(kj::mv(vpap.promise), kj::mv(vpap.pipeline));
           })).attach(addRef(*this), kj::mv(capability)).split();
 
-          return {
-            kj::mv(kj::get<0>(promises)),
+          kj::Promise<void> promise1 = kj::mv(kj::get<0>(promises));
+          return ClientHook::VoidPromiseAndPipeline {
+            kj::mv(promise1),
             newLocalPromisePipeline(kj::mv(kj::get<1>(promises))),
           };
         }

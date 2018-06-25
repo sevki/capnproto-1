@@ -3600,17 +3600,20 @@ public:
       // This gets complicated since request() returns a pair of a stream and a promise.
       auto urlCopy = kj::str(url);
       auto headersCopy = headers.clone();
-      auto combined = promise.addBranch().then(kj::mvCapture(urlCopy, kj::mvCapture(headersCopy,
-          [this,method,expectedBodySize](HttpHeaders&& headers, kj::String&& url)
-          -> kj::Tuple<kj::Own<kj::AsyncOutputStream>, kj::Promise<Response>> {
+      kj::Promise<kj::Tuple<kj::Own<kj::AsyncOutputStream>, kj::Promise<Response>>> combined =
+          promise.addBranch().then(kj::mvCapture(urlCopy, kj::mvCapture(headersCopy,
+              [this,method,expectedBodySize](HttpHeaders&& headers, kj::String&& url)
+              -> kj::Tuple<kj::Own<kj::AsyncOutputStream>, kj::Promise<Response>> {
         auto req = KJ_ASSERT_NONNULL(client)->request(method, url, headers, expectedBodySize);
         return kj::tuple(kj::mv(req.body), kj::mv(req.response));
       })));
 
-      auto split = combined.split();
-      return {
+      kj::Tuple<kj::Promise<kj::Own<kj::AsyncOutputStream>>, kj::Promise<Response>> split =
+          combined.split();
+      kj::Promise<Response> responsePromise = kj::mv(kj::get<1>(split));
+      return Request {
         kj::heap<PromiseOutputStream>(kj::mv(kj::get<0>(split))),
-        kj::mv(kj::get<1>(split))
+        kj::mv(responsePromise)
       };
     }
   }
